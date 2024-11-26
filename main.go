@@ -24,7 +24,7 @@ func main() {
 		panic("Must provide exactly 1 filepath arg\n" + usage)
 	}
 
-	ini, err := printConfig(os.Args[1])
+	ini, err := printConfigFilepath(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
@@ -32,17 +32,20 @@ func main() {
 	fmt.Println(ini)
 }
 
-func printConfig(filepath string) (string, error) {
-	var raw []byte
-	var err error
-	var config Config
-
-	raw, err = os.ReadFile(filepath)
+func printConfigFilepath(filepath string) (string, error) {
+	raw, err := os.ReadFile(filepath)
 	if err != nil {
 		return "", err
 	}
 
-	dec := yaml.NewDecoder(strings.NewReader(string(raw)))
+	return printConfig(string(raw))
+}
+
+func printConfig(cfg string) (string, error) {
+	var err error
+	var config Config
+
+	dec := yaml.NewDecoder(strings.NewReader(cfg))
 	dec.KnownFields(true)
 	err = dec.Decode(&config)
 	if errors.Is(err, io.EOF) {

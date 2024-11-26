@@ -45,16 +45,24 @@ func writeProps(
 
 	tw := tabwriter.NewWriter(sb, 0, 4, 1, ' ', 0)
 	for _, p := range props {
+		isRules := strings.EqualFold("rules", p.Key)
 		if s, ok := p.Value.([]any); ok {
 			for _, v := range s {
-				converted := strings.TrimSuffix(stringFromAny(v), "\n")
-				_, err := fmt.Fprintf(tw, "    %s\t%s\n", p.Key, converted)
+				converted := strings.TrimSuffix(stringFromAny(v, isRules), "\n")
+				var err error
+				if isRules {
+
+					_, err = fmt.Fprintf(tw, "    %s\n", converted)
+				} else {
+					_, err = fmt.Fprintf(tw, "    %s\t%s\n", p.Key, converted)
+				}
+
 				if err != nil {
 					return err
 				}
 			}
 		} else {
-			_, err := fmt.Fprintf(tw, "    %s\t%s\n", p.Key, stringFromAny(p.Value))
+			_, err := fmt.Fprintf(tw, "    %s\t%s\n", p.Key, stringFromAny(p.Value, isRules))
 			if err != nil {
 				return err
 			}
@@ -141,20 +149,30 @@ func int32FromAny(v any) (int32, bool) {
 
 // stringFromAny -
 // TODO: Handle more data types.
-func stringFromAny(v any) string {
+func stringFromAny(v any, isRules bool) string {
 	switch t := v.(type) {
 	case encoding.TextMarshaler:
 		if b, err := t.MarshalText(); err == nil {
-			return stringFromAny(string(b))
+			return stringFromAny(string(b), isRules)
 		}
 	case fmt.Stringer:
-		return stringFromAny(t.String())
+		return stringFromAny(t.String(), isRules)
 	case json.Marshaler:
 		if b, err := t.MarshalJSON(); err == nil {
-			return stringFromAny(string(b))
+			return stringFromAny(string(b), isRules)
 		}
 	case map[string]any, []any:
 		var buff bytes.Buffer
+		// here special case rules
+		parsedMap, isPropMap := v.(map[string]any)
+		if isRules && isPropMap {
+			return fmt.Sprintf("rule\t\"%v\"\t\"%v\"\t\"%v\"",
+				parsedMap["state"],
+				parsedMap["regex"],
+				parsedMap["next_state"],
+			)
+		}
+
 		enc := json.NewEncoder(&buff)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(t); err == nil {
@@ -182,5 +200,5 @@ func stringFromAny(v any) string {
 		return t
 	}
 
-	return stringFromAny(fmt.Sprintf("%v", v))
+	return stringFromAny(fmt.Sprintf("%v", v), isRules)
 }
