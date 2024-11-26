@@ -25,6 +25,10 @@ multiline_parsers:
       - state: cont
         regex: '^java.*/'
         next_state: cont
+  - name: given:type
+    type: regex
+    parser: foo
+    key_content: bar
 pipeline:
     parsers:
       - name: hour_parser
@@ -98,11 +102,15 @@ var expected = `
     flush_timeout 1000
     rule          "start_state" "/([a-zA-Z]+ \d+ \d+\:\d+\:\d+)(.*)/" "cont"
     rule          "cont"        "^java.*/"                            "cont"
+[MULTILINE_PARSER]
+    name        given:type
+    type        regex
+    parser      foo
+    key_content bar
 `
 
 func TestPrintConfig(t *testing.T) {
 	actual, err := printConfig(testData)
 	require.NoError(t, err)
-	println(actual)
 	require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 }
