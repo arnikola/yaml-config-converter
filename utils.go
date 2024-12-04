@@ -15,10 +15,9 @@ import (
 )
 
 /*
-// Taken from
+// Modified from
 // https://github.com/chronosphereio/calyptia-go-fluentbit-config/blob/main/classic.go#L128
 */
-
 func writePlugins(
 	sb io.Writer, kind string, plugins fluentbitconfig.Plugins,
 ) error {
@@ -201,4 +200,52 @@ func stringFromAny(v any, isRules bool) string {
 	}
 
 	return stringFromAny(fmt.Sprintf("%v", v), isRules)
+}
+
+func marshalWithMulti(c fluentbitconfig.Config, multi fluentbitconfig.Plugins) ([]byte, error) {
+	var sb strings.Builder
+
+	for _, p := range c.Env {
+		_, err := fmt.Fprintf(&sb, "@SET %s=%s\n", p.Key, stringFromAny(p.Value, false))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, include := range c.Includes {
+		_, err := fmt.Fprintf(&sb, "@INCLUDE %s\n", include)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := writeProps(&sb, "SERVICE", c.Service); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "CUSTOM", c.Customs); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "INPUT", c.Pipeline.Inputs); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "PARSER", c.Pipeline.Parsers); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "MULTILINE_PARSER", multi); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "FILTER", c.Pipeline.Filters); err != nil {
+		return nil, err
+	}
+
+	if err := writePlugins(&sb, "OUTPUT", c.Pipeline.Outputs); err != nil {
+		return nil, err
+	}
+
+	return []byte(sb.String()), nil
 }

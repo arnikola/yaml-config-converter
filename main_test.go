@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	lua "github.com/yuin/gopher-lua"
 )
 
 var testData = `
@@ -82,16 +81,6 @@ var expected = `
     time_key    _time
     regex       ^
     time_format %Y
-[FILTER]
-    Name         parser
-    Match        dummy.*
-    Key_Name     data
-    Parser       dummy_test
-    Reserve_Data On
-    Preserve_Key On
-[OUTPUT]
-    Name  stdout
-    Match *
 [MULTILINE_PARSER]
     name          other:log
     type          regex
@@ -109,6 +98,16 @@ var expected = `
     type        regex
     parser      foo
     key_content bar
+[FILTER]
+    Name         parser
+    Match        dummy.*
+    Key_Name     data
+    Parser       dummy_test
+    Reserve_Data On
+    Preserve_Key On
+[OUTPUT]
+    Name  stdout
+    Match *
 `
 
 func TestPrintConfig(t *testing.T) {
@@ -138,37 +137,4 @@ end
 	beautify, err := beautifyLua(min)
 	require.NoError(t, err)
 	fmt.Println(beautify)
-}
-
-func minifyLua(inLua string) (string, error) {
-	return mutateLua(inLua, "minify")
-}
-
-func beautifyLua(inLua string) (string, error) {
-	return mutateLua(inLua, "beautify")
-}
-
-func mutateLua(inLua, verb string) (string, error) {
-	l := lua.NewState(
-		lua.Options{},
-	)
-	defer l.Close()
-
-	f, err := l.LoadFile("minify.lua")
-	if err != nil {
-		return "", err
-	}
-
-	l.Push(f)
-	args := l.CreateTable(3, 3)
-	args.Append(lua.LString(verb))
-	args.Append(lua.LString(inLua))
-	l.SetGlobal("args", args)
-
-	err = l.PCall(0, lua.MultRet, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return l.GetGlobal("outputStr").String(), nil
 }

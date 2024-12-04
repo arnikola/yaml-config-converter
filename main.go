@@ -63,23 +63,8 @@ func printConfig(cfg string) (string, error) {
 	// Gather all parsers across either config format.
 	parsers := dedupeParsers(append(fbCfg.Pipeline.Parsers, config.Parsers...))
 	fbCfg.Pipeline.Parsers = parsers
-	converted, err := fbCfg.DumpAsClassic()
-	if err != nil {
-		return "", err
-	}
-
-	var sb strings.Builder
-	// Gather all multiline parsers across either config format.
 	multi := dedupeParsers(append(config.Pipeline.Multi, config.Multi...))
-	_, err = sb.WriteString(converted)
-	if err != nil {
-		return "", err
-	}
 
-	err = writePlugins(&sb, "MULTILINE_PARSER", multi)
-	if err != nil {
-		return "", err
-	}
-
-	return sb.String(), nil
+	converted, err := marshalWithMulti(fbCfg, multi)
+	return string(converted), err
 }
