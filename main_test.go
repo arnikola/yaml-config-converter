@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	lua "github.com/yuin/gopher-lua"
 )
 
 var testData = `
@@ -113,4 +115,60 @@ func TestPrintConfig(t *testing.T) {
 	actual, err := printConfig(testData)
 	require.NoError(t, err)
 	require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
+}
+
+func TestLua(t *testing.T) {
+	someLua := `
+function some_func(tag, timestamp, record)
+  local os_date = os.date("*t", timestamp)
+  local offset = 0
+  if os_date.isdst then
+      offset = 11 * 3600  -- AEDT (UTC+11)
+  else
+      offset = 10 * 3600  -- AEST (UTC+10)
+  end
+  record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset) .. "Z"
+  return 1, timestamp, record
+end
+`
+	min, err := minifyLua(someLua)
+	require.NoError(t, err)
+	fmt.Println(min)
+
+	beautify, err := beautifyLua(min)
+	require.NoError(t, err)
+	fmt.Println(beautify)
+}
+
+func minifyLua(inLua string) (string, error) {
+	return mutateLua(inLua, "minify")
+}
+
+func beautifyLua(inLua string) (string, error) {
+	return mutateLua(inLua, "beautify")
+}
+
+func mutateLua(inLua, verb string) (string, error) {
+	l := lua.NewState(
+		lua.Options{},
+	)
+	defer l.Close()
+
+	f, err := l.LoadFile("minify.lua")
+	if err != nil {
+		return "", err
+	}
+
+	l.Push(f)
+	args := l.CreateTable(3, 3)
+	args.Append(lua.LString(verb))
+	args.Append(lua.LString(inLua))
+	l.SetGlobal("args", args)
+
+	err = l.PCall(0, lua.MultRet, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return l.GetGlobal("outputStr").String(), nil
 }
