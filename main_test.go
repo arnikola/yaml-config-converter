@@ -80,16 +80,6 @@ var expected = `
     time_key    _time
     regex       ^
     time_format %Y
-[FILTER]
-    Name         parser
-    Match        dummy.*
-    Key_Name     data
-    Parser       dummy_test
-    Reserve_Data On
-    Preserve_Key On
-[OUTPUT]
-    Name  stdout
-    Match *
 [MULTILINE_PARSER]
     name          other:log
     type          regex
@@ -107,10 +97,78 @@ var expected = `
     type        regex
     parser      foo
     key_content bar
+[FILTER]
+    Name         parser
+    Match        dummy.*
+    Key_Name     data
+    Parser       dummy_test
+    Reserve_Data On
+    Preserve_Key On
+[OUTPUT]
+    Name  stdout
+    Match *
 `
 
 func TestPrintConfig(t *testing.T) {
 	actual, err := printConfig(testData)
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
+}
+
+func TestLua(t *testing.T) {
+	someLua := `
+function some_func(tag, timestamp, record)
+	local os_date = os.date("*t", timestamp)
+	local offset = 0
+	if os_date.isdst then
+		offset = 11 * 3600
+	else
+		offset = 10 * 3600
+	end
+	record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset).."Z"
+	return 1, timestamp, record
+end
+`
+	minEx := `function some_func(tag,timestamp,record)local os_date=os.date("*t",timestamp)local offset=0 if os_date.isdst then offset=11*3600 else offset=10*3600 end record["time"]=os.date("%Y-%m-%d %H:%M:%S",timestamp+offset).."Z"return 1,timestamp,record end`
+	min, err := minifyLua(someLua)
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSpace(minEx), strings.TrimSpace(min))
+
+	beautify, err := beautifyLua(min)
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSpace(someLua), strings.TrimSpace(beautify))
+}
+
+func TestLuaParser(t *testing.T) {
+	data := `
+pipeline:
+  filters:
+    - name: lua
+      match: something
+      code: |
+        function some_func(tag, timestamp, record)
+            local os_date = os.date("*t", timestamp)
+            local offset = 0
+            if os_date.isdst then
+                offset = 11 * 3600
+            else
+                offset = 10 * 3600
+            end
+            record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset) .. "Z"
+            return 1, timestamp, record
+        end
+      call: some_func
+      `
+
+	expected := `
+  [FILTER]
+    name  lua
+    match something
+    code  function some_func(tag,timestamp,record)local os_date=os.date("*t",timestamp)local offset=0 if os_date.isdst then offset=11*3600 else offset=10*3600 end record["time"]=os.date("%Y-%m-%d %H:%M:%S",timestamp+offset).."Z"return 1,timestamp,record end
+    call  some_func
+  `
+
+	actual, err := printConfig(data)
 	require.NoError(t, err)
 	require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 }
