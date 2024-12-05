@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -119,22 +118,57 @@ func TestPrintConfig(t *testing.T) {
 func TestLua(t *testing.T) {
 	someLua := `
 function some_func(tag, timestamp, record)
-  local os_date = os.date("*t", timestamp)
-  local offset = 0
-  if os_date.isdst then
-      offset = 11 * 3600  -- AEDT (UTC+11)
-  else
-      offset = 10 * 3600  -- AEST (UTC+10)
-  end
-  record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset) .. "Z"
-  return 1, timestamp, record
+	local os_date = os.date("*t", timestamp)
+	local offset = 0
+	if os_date.isdst then
+		offset = 11 * 3600
+	else
+		offset = 10 * 3600
+	end
+	record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset).."Z"
+	return 1, timestamp, record
 end
 `
+	minEx := `function some_func(tag,timestamp,record)local os_date=os.date("*t",timestamp)local offset=0 if os_date.isdst then offset=11*3600 else offset=10*3600 end record["time"]=os.date("%Y-%m-%d %H:%M:%S",timestamp+offset).."Z"return 1,timestamp,record end`
 	min, err := minifyLua(someLua)
 	require.NoError(t, err)
-	fmt.Println(min)
+	require.Equal(t, strings.TrimSpace(minEx), strings.TrimSpace(min))
 
 	beautify, err := beautifyLua(min)
 	require.NoError(t, err)
-	fmt.Println(beautify)
+	require.Equal(t, strings.TrimSpace(someLua), strings.TrimSpace(beautify))
+}
+
+func TestLuaParser(t *testing.T) {
+	data := `
+pipeline:
+  filters:
+    - name: lua
+      match: something
+      code: |
+        function some_func(tag, timestamp, record)
+            local os_date = os.date("*t", timestamp)
+            local offset = 0
+            if os_date.isdst then
+                offset = 11 * 3600
+            else
+                offset = 10 * 3600
+            end
+            record["time"] = os.date("%Y-%m-%d %H:%M:%S", timestamp + offset) .. "Z"
+            return 1, timestamp, record
+        end
+      call: some_func
+      `
+
+	expected := `
+  [FILTER]
+    name  lua
+    match something
+    code  function some_func(tag,timestamp,record)local os_date=os.date("*t",timestamp)local offset=0 if os_date.isdst then offset=11*3600 else offset=10*3600 end record["time"]=os.date("%Y-%m-%d %H:%M:%S",timestamp+offset).."Z"return 1,timestamp,record end
+    call  some_func
+  `
+
+	actual, err := printConfig(data)
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 }

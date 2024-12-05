@@ -18,6 +18,7 @@ import (
 // Modified from
 // https://github.com/chronosphereio/calyptia-go-fluentbit-config/blob/main/classic.go#L128
 */
+
 func writePlugins(
 	sb io.Writer, kind string, plugins fluentbitconfig.Plugins,
 ) error {
@@ -50,7 +51,6 @@ func writeProps(
 				converted := strings.TrimSuffix(stringFromAny(v, isRules), "\n")
 				var err error
 				if isRules {
-
 					_, err = fmt.Fprintf(tw, "    %s\n", converted)
 				} else {
 					_, err = fmt.Fprintf(tw, "    %s\t%s\n", p.Key, converted)
@@ -162,7 +162,7 @@ func stringFromAny(v any, isRules bool) string {
 		}
 	case map[string]any, []any:
 		var buff bytes.Buffer
-		// here special case rules
+		// Special case multiline parser rules here.
 		parsedMap, isPropMap := v.(map[string]any)
 		if isRules && isPropMap {
 			return fmt.Sprintf("rule\t\"%v\"\t\"%v\"\t\"%v\"",
@@ -239,7 +239,7 @@ func marshalWithMulti(c fluentbitconfig.Config, multi fluentbitconfig.Plugins) (
 		return nil, err
 	}
 
-	if err := writePlugins(&sb, "FILTER", c.Pipeline.Filters); err != nil {
+	if err := writeFilterPlugins(&sb, "FILTER", c.Pipeline.Filters); err != nil {
 		return nil, err
 	}
 
@@ -248,4 +248,76 @@ func marshalWithMulti(c fluentbitconfig.Config, multi fluentbitconfig.Plugins) (
 	}
 
 	return []byte(sb.String()), nil
+}
+
+func writeFilterPlugins(
+	sb io.Writer, kind string, plugins fluentbitconfig.Plugins,
+) error {
+	for _, plugin := range plugins {
+		if plugin.Name == "lua" {
+			if err := writeLuaProps(sb, kind, plugin.Properties); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if err := writeProps(sb, kind, plugin.Properties); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeLuaProps(
+	sb io.Writer, kind string, props property.Properties,
+) error {
+	if len(props) == 0 {
+		return nil
+	}
+
+	_, err := fmt.Fprintf(sb, "[%s]\n", kind)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(sb, 0, 4, 1, ' ', 0)
+	for _, p := range props {
+		isCode := strings.EqualFold("code", p.Key)
+
+		if s, ok := p.Value.([]any); ok {
+			for _, v := range s {
+				converted := strings.TrimSuffix(stringFromAny(v, false), "\n")
+				var err error
+				_, err = fmt.Fprintf(tw, "    %s\t%s\n", p.Key, converted)
+
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			var converted string
+			if isCode {
+				inLua, ok := p.Value.(string)
+				if !ok {
+					return fmt.Errorf("code field for custom lua filter is invalid: %v", inLua)
+				}
+
+				converted, err = minifyLua(inLua)
+				if err != nil {
+					return err
+				}
+			} else {
+				converted = stringFromAny(p.Value, false)
+			}
+
+			_, err := fmt.Fprintf(tw, "    %s\t%s\n", p.Key, converted)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return tw.Flush()
 }
